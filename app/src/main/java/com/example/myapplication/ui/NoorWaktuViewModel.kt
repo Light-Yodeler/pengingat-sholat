@@ -22,6 +22,8 @@ import com.example.myapplication.core.prayer.PrayerTimeCalculator
 import com.example.myapplication.core.prayer.PrayerType
 import com.example.myapplication.core.qibla.QiblaCalculator
 import com.example.myapplication.core.qibla.QiblaResult
+import com.example.myapplication.core.preferences.AppPreferences
+import android.widget.Toast
 import com.example.myapplication.core.sensor.CompassSensorManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,6 +38,7 @@ import kotlin.math.abs
 class NoorWaktuViewModel(application: Application) : AndroidViewModel(application) {
 
     private val context = application.applicationContext
+    val preferences = AppPreferences(context)
     val audioManager = AzanAudioManager(context)
     val compassManager = CompassSensorManager(context)
 
@@ -47,10 +50,14 @@ class NoorWaktuViewModel(application: Application) : AndroidViewModel(applicatio
         context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
     }
 
+    private val initialLocation = preferences.loadLocation()
+    private val initialSettings = preferences.loadSettings()
+    private val initialSchedule = calculateCurrentSchedule(initialLocation)
+
     private val _selectedTab = MutableStateFlow(0)
     val selectedTab: StateFlow<Int> = _selectedTab.asStateFlow()
 
-    private val _currentLocation = MutableStateFlow(LocationPresets.defaultCity)
+    private val _currentLocation = MutableStateFlow(initialLocation)
     val currentLocation: StateFlow<CityLocation> = _currentLocation.asStateFlow()
 
     private val _isLocationPermissionGranted = MutableStateFlow(LocationManagerHelper.hasLocationPermission(context))
@@ -62,16 +69,16 @@ class NoorWaktuViewModel(application: Application) : AndroidViewModel(applicatio
     private val _isLoadingLocation = MutableStateFlow(false)
     val isLoadingLocation: StateFlow<Boolean> = _isLoadingLocation.asStateFlow()
 
-    private val _schedule = MutableStateFlow(calculateCurrentSchedule(LocationPresets.defaultCity))
+    private val _schedule = MutableStateFlow(initialSchedule)
     val schedule: StateFlow<PrayerSchedule> = _schedule.asStateFlow()
 
     private val _nextPrayer = MutableStateFlow(
-        PrayerTimeCalculator.getNextPrayer(_schedule.value, LocalTime.now())
+        PrayerTimeCalculator.getNextPrayer(initialSchedule, LocalTime.now())
     )
     val nextPrayer: StateFlow<NextPrayerInfo> = _nextPrayer.asStateFlow()
 
     private val _qiblaResult = MutableStateFlow(
-        QiblaCalculator.calculate(LocationPresets.defaultCity.latitude, LocationPresets.defaultCity.longitude)
+        QiblaCalculator.calculate(initialLocation.latitude, initialLocation.longitude)
     )
     val qiblaResult: StateFlow<QiblaResult> = _qiblaResult.asStateFlow()
 
@@ -81,7 +88,7 @@ class NoorWaktuViewModel(application: Application) : AndroidViewModel(applicatio
     private val _isQiblaLocked = MutableStateFlow(false)
     val isQiblaLocked: StateFlow<Boolean> = _isQiblaLocked.asStateFlow()
 
-    private val _settings = MutableStateFlow(AppSettings())
+    private val _settings = MutableStateFlow(initialSettings)
     val settings: StateFlow<AppSettings> = _settings.asStateFlow()
 
     private val _isPreviewPlaying = MutableStateFlow(false)
@@ -97,14 +104,14 @@ class NoorWaktuViewModel(application: Application) : AndroidViewModel(applicatio
     val showLocationPicker: StateFlow<Boolean> = _showLocationPicker.asStateFlow()
 
     // Dhikr State
-    private val _dhikrCategory = MutableStateFlow("Setelah Salat")
+    private val _dhikrCategory = MutableStateFlow(preferences.loadDhikrCategory())
     val dhikrCategory: StateFlow<String> = _dhikrCategory.asStateFlow()
 
     private val _activeDhikrIndex = MutableStateFlow(0)
     val activeDhikrIndex: StateFlow<Int> = _activeDhikrIndex.asStateFlow()
 
     // Map of dhikr item ID -> count
-    private val _dhikrCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
+    private val _dhikrCounts = MutableStateFlow<Map<String, Int>>(preferences.loadDhikrCounts())
     val dhikrCounts: StateFlow<Map<String, Int>> = _dhikrCounts.asStateFlow()
 
     private val _tasbihCount = MutableStateFlow(0)
@@ -116,6 +123,11 @@ class NoorWaktuViewModel(application: Application) : AndroidViewModel(applicatio
     private var hasVibratedForCurrentAlignment = false
 
     init {
+        val items = DhikrPresets.getItemsForCategory(_dhikrCategory.value)
+        val firstItem = items.firstOrNull()
+        if (firstItem != null) {
+            _tasbihCount.value = _dhikrCounts.value[firstItem.id] ?: 0
+        }
         startRealtimeTicker()
         observeCompass()
         checkAndFetchInitialGps()
@@ -147,7 +159,7 @@ class NoorWaktuViewModel(application: Application) : AndroidViewModel(applicatio
         _isLocationPermissionGranted.value = hasPerm
         _isGpsEnabled.value = gpsOn
 
-        if (hasPerm && gpsOn) {
+        if (hasPerm && gpsOn && _currentLocation.value.id == "gps") {
             refreshLocationFromGps()
         }
     }
@@ -173,11 +185,13 @@ class NoorWaktuViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun selectCity(city: CityLocation) {
         _currentLocation.value = city
+        preferences.saveLocation(city)
         val newSchedule = calculateCurrentSchedule(city)
         _schedule.value = newSchedule
         _nextPrayer.value = PrayerTimeCalculator.getNextPrayer(newSchedule, LocalTime.now())
         _qiblaResult.value = QiblaCalculator.calculate(city.latitude, city.longitude)
         scheduleBackgroundAlarms()
+        Toast.makeText(context, "Lokasi: ${city.name}", Toast.LENGTH_SHORT).show()
     }
 
     private fun calculateCurrentSchedule(city: CityLocation): PrayerSchedule {
@@ -245,28 +259,43 @@ class NoorWaktuViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun toggleAutoSilent(enabled: Boolean) {
         _settings.value = _settings.value.copy(autoSilentMode = enabled)
+        preferences.saveSettings(_settings.value)
     }
 
     fun setAzanVolume(volumePercent: Int) {
         _settings.value = _settings.value.copy(azanVolumePercent = volumePercent)
+        preferences.saveSettings(_settings.value)
         audioManager.updateVolume(volumePercent)
     }
 
     fun selectSubuhMuazzin(id: Int) {
         _settings.value = _settings.value.copy(selectedSubuhMuazzinId = id)
+        preferences.saveSettings(_settings.value)
         scheduleBackgroundAlarms()
+        val muazzinName = MuazzinList.subuhOptions.find { it.id == id }?.title ?: "Azan Subuh"
+        Toast.makeText(context, "$muazzinName berhasil disimpan", Toast.LENGTH_SHORT).show()
     }
 
     fun selectRegularMuazzin(id: Int) {
         _settings.value = _settings.value.copy(selectedRegularMuazzinId = id)
+        preferences.saveSettings(_settings.value)
         scheduleBackgroundAlarms()
+        val muazzinName = MuazzinList.regularOptions.find { it.id == id }?.title ?: "Azan Salat"
+        Toast.makeText(context, "$muazzinName berhasil disimpan", Toast.LENGTH_SHORT).show()
     }
 
     fun setPrayerAlert(prayerType: PrayerType, alertType: AlertType) {
         val updated = _settings.value.prayerAlertTypes.toMutableMap()
         updated[prayerType] = alertType
         _settings.value = _settings.value.copy(prayerAlertTypes = updated)
+        preferences.saveSettings(_settings.value)
         scheduleBackgroundAlarms()
+        val modeLabel = when (alertType) {
+            AlertType.AZAN -> "Bersuara"
+            AlertType.SILENT -> "Senyap"
+            AlertType.OFF -> "Mati"
+        }
+        Toast.makeText(context, "Notifikasi ${prayerType.displayName}: $modeLabel tersimpan", Toast.LENGTH_SHORT).show()
     }
 
     fun cyclePrayerAlert(prayerType: PrayerType) {
@@ -282,10 +311,12 @@ class NoorWaktuViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun toggleSubuhEarlyReminder(enabled: Boolean) {
         _settings.value = _settings.value.copy(subuhEarlyReminder = enabled)
+        preferences.saveSettings(_settings.value)
     }
 
     fun toggleMaghribIftarDua(enabled: Boolean) {
         _settings.value = _settings.value.copy(maghribIftarDuaReminder = enabled)
+        preferences.saveSettings(_settings.value)
     }
 
     fun incrementTasbih() {
@@ -301,6 +332,7 @@ class NoorWaktuViewModel(application: Application) : AndroidViewModel(applicatio
         if (nextVal >= target) {
             updatedMap[currentItem.id] = target
             _dhikrCounts.value = updatedMap
+            preferences.saveDhikrCounts(updatedMap)
             _tasbihCount.value = target
             triggerPatternHaptic()
 
@@ -314,6 +346,7 @@ class NoorWaktuViewModel(application: Application) : AndroidViewModel(applicatio
         } else {
             updatedMap[currentItem.id] = nextVal
             _dhikrCounts.value = updatedMap
+            preferences.saveDhikrCounts(updatedMap)
             _tasbihCount.value = nextVal
             if (_vibrateFeedback.value) {
                 triggerHaptic(60L)
@@ -327,6 +360,7 @@ class NoorWaktuViewModel(application: Application) : AndroidViewModel(applicatio
         val updatedMap = _dhikrCounts.value.toMutableMap()
         updatedMap[currentItem.id] = 0
         _dhikrCounts.value = updatedMap
+        preferences.saveDhikrCounts(updatedMap)
         _tasbihCount.value = 0
         triggerHaptic(80L)
     }
@@ -338,6 +372,7 @@ class NoorWaktuViewModel(application: Application) : AndroidViewModel(applicatio
             updatedMap[item.id] = 0
         }
         _dhikrCounts.value = updatedMap
+        preferences.saveDhikrCounts(updatedMap)
         _activeDhikrIndex.value = 0
         _tasbihCount.value = 0
         triggerHaptic(100L)
@@ -354,6 +389,7 @@ class NoorWaktuViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun selectDhikrCategory(category: String) {
         _dhikrCategory.value = category
+        preferences.saveDhikrCategory(category)
         _activeDhikrIndex.value = 0
         val items = DhikrPresets.getItemsForCategory(category)
         val firstItem = items.firstOrNull()

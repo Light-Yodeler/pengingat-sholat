@@ -2,7 +2,7 @@ package com.example.myapplication.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Emerald Serenity Design System Colors
+// Noor Waktu Design System Colors
 val EmeraldPrimary = Color(0xFF064E3B)
 val EmeraldDeep = Color(0xFF04382A)
 val EmeraldContainer = Color(0xFF0D5C46)

@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -1071,6 +1072,11 @@ fun LocationPickerDialog(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
                     modifier = Modifier.fillMaxWidth(),
+                    textStyle = TextStyle(
+                        color = SlateDark,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    ),
                     placeholder = {
                         Text(text = "Cari kota atau provinsi...", style = MaterialTheme.typography.bodySmall, color = SlateMuted)
                     },
@@ -1087,10 +1093,15 @@ fun LocationPickerDialog(
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = SlateDark,
+                        unfocusedTextColor = SlateDark,
+                        focusedPlaceholderColor = SlateMuted,
+                        unfocusedPlaceholderColor = SlateMuted,
                         focusedBorderColor = EmeraldPrimary,
                         unfocusedBorderColor = BorderDefault,
                         focusedContainerColor = SurfacePure,
-                        unfocusedContainerColor = SurfaceContainerLow
+                        unfocusedContainerColor = SurfacePure,
+                        cursorColor = EmeraldPrimary
                     )
                 )
 

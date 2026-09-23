@@ -2,8 +2,6 @@
 
 Aplikasi Android pengingat waktu salat, penunjuk arah kiblat, dan panduan dzikir harian berbasis Jetpack Compose dan Material 3. Menggunakan kalkulasi astronomi standar Kementerian Agama Republik Indonesia (Kemenag RI) dan audio azan rekaman Masjidil Haram Makkah serta Masjid Nabawi Madinah.
 
-Hak cipta (c) 2026 light-yodeler. Seluruh hak cipta dilindungi undang-undang.
-
 ## Fitur
 
 ### Jadwal Salat dan Kalender Hijriah
@@ -97,10 +95,11 @@ app/src/main/
 │   │   ├── alarm/          # AzanAlarmScheduler, AzanBroadcastReceiver, BootReceiver
 │   │   ├── calculation/    # Algoritma hisab astronomi dan koreksi ikhtiyat
 │   │   ├── location/       # Database koordinat 38 provinsi dan LocationHelper
-│   │   └── model/          # Model data jadwal, doa dzikir, dan preferensi
+│   │   ├── model/          # Model data jadwal, doa dzikir, dan preferensi
+│   │   └── preferences/    # Persistensi preferensi dan setelan (AppPreferences)
 │   ├── ui/
 │   │   ├── screens/        # JadwalScreen, KiblatScreen, PengingatScreen, DzikirScreen
-│   │   ├── theme/          # Palet warna Emerald Serenity, tipografi, dan tema Material 3
+│   │   ├── theme/          # Palet warna, tipografi, dan tema Material 3
 │   │   ├── NoorWaktuMainScreen.kt
 │   │   └── NoorWaktuViewModel.kt
 │   └── MainActivity.kt
@@ -109,9 +108,3 @@ app/src/main/
     ├── mipmap-*/           # Ikon launcher aplikasi resmi
     └── raw/                # Audio rekaman azan (Makkah, Madinah, Nafea)
 ```
-
-## Hak Cipta dan Lisensi
-
-Hak Cipta (c) 2026 light-yodeler.
-
-Seluruh kode sumber, tata letak antarmuka, dan konfigurasi proyek ini dibuat dan dikembangkan oleh light-yodeler.

@@ -172,7 +172,7 @@ fun NoorWaktuMainScreen(
                 ) {
                     Column {
                         Text(
-                            text = "Noor Waktu v1.0 • Edisi Emerald Serenity",
+                            text = "Noor Waktu v1.0",
                             style = MaterialTheme.typography.labelSmall,
                             color = SlateMuted
                         )
