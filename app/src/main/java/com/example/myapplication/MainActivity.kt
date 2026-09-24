@@ -42,14 +42,20 @@ class MainActivity : ComponentActivity() {
         viewModel.checkAndFetchInitialGps()
     }
 
-    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
         if (com.example.myapplication.core.alarm.AzanBroadcastReceiver.isAzanPlaying.value &&
-            (keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP)
+            event.action == android.view.KeyEvent.ACTION_DOWN
         ) {
-            com.example.myapplication.core.alarm.AzanBroadcastReceiver.stopActiveAzan(this)
-            android.widget.Toast.makeText(this, "Suara azan dihentikan", android.widget.Toast.LENGTH_SHORT).show()
-            return true
+            when (event.keyCode) {
+                android.view.KeyEvent.KEYCODE_VOLUME_DOWN,
+                android.view.KeyEvent.KEYCODE_VOLUME_UP,
+                android.view.KeyEvent.KEYCODE_VOLUME_MUTE -> {
+                    com.example.myapplication.core.alarm.AzanBroadcastReceiver.stopActiveAzan(this)
+                    android.widget.Toast.makeText(this, "Suara azan dihentikan", android.widget.Toast.LENGTH_SHORT).show()
+                    return true
+                }
+            }
         }
-        return super.onKeyDown(keyCode, event)
+        return super.dispatchKeyEvent(event)
     }
 }

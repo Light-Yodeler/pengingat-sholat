@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.os.Build
@@ -43,10 +44,50 @@ class AzanBroadcastReceiver : BroadcastReceiver() {
 
         private var activePlayer: MediaPlayer? = null
         private var wakeLock: PowerManager.WakeLock? = null
+        private var playStartTime: Long = 0L
+        private var volumeReceiver: BroadcastReceiver? = null
 
-        private fun stopActivePlayerOnly() {
+        private fun registerVolumeKeyObserver(context: Context) {
+            unregisterVolumeKeyObserver(context)
+            try {
+                val receiver = object : BroadcastReceiver() {
+                    override fun onReceive(c: Context, intent: Intent) {
+                        if (intent.action == "android.media.VOLUME_CHANGED_ACTION") {
+                            if (System.currentTimeMillis() - playStartTime > 600L) {
+                                android.util.Log.i("NoorWaktuAzan", "Volume key pressed while screen locked/background, stopping azan!")
+                                stopActiveAzan(c)
+                            }
+                        }
+                    }
+                }
+                volumeReceiver = receiver
+                val filter = IntentFilter("android.media.VOLUME_CHANGED_ACTION")
+                val appContext = context.applicationContext
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    appContext.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
+                } else {
+                    appContext.registerReceiver(receiver, filter)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("NoorWaktuAzan", "Failed to register volume key observer", e)
+            }
+        }
+
+        private fun unregisterVolumeKeyObserver(context: Context?) {
+            try {
+                volumeReceiver?.let {
+                    context?.applicationContext?.unregisterReceiver(it)
+                }
+            } catch (_: Exception) {
+            } finally {
+                volumeReceiver = null
+            }
+        }
+
+        private fun stopActivePlayerOnly(context: Context? = null) {
             _isAzanPlaying.value = false
             _currentPlayingPrayer.value = null
+            unregisterVolumeKeyObserver(context)
             try {
                 if (activePlayer?.isPlaying == true) {
                     activePlayer?.stop()
@@ -66,7 +107,7 @@ class AzanBroadcastReceiver : BroadcastReceiver() {
         }
 
         fun stopActiveAzan(context: Context) {
-            stopActivePlayerOnly()
+            stopActivePlayerOnly(context)
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
             nm?.cancel(NOTIFICATION_ID)
         }
@@ -108,9 +149,11 @@ class AzanBroadcastReceiver : BroadcastReceiver() {
     }
 
     private fun playAzanAudio(context: Context, rawResId: Int, prayerName: String) {
-        stopActivePlayerOnly()
+        stopActivePlayerOnly(context)
 
         try {
+            playStartTime = System.currentTimeMillis()
+            registerVolumeKeyObserver(context)
             _isAzanPlaying.value = true
             _currentPlayingPrayer.value = prayerName
             val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
@@ -141,6 +184,7 @@ class AzanBroadcastReceiver : BroadcastReceiver() {
             activePlayer = null
             _isAzanPlaying.value = false
             _currentPlayingPrayer.value = null
+            unregisterVolumeKeyObserver(context)
         }
     }
 
