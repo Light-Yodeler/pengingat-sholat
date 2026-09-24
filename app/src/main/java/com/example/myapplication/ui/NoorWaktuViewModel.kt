@@ -262,6 +262,31 @@ class NoorWaktuViewModel(application: Application) : AndroidViewModel(applicatio
         preferences.saveSettings(_settings.value)
     }
 
+    fun toggleGlobalAzanSound(enabled: Boolean) {
+        val targetAlert = if (enabled) AlertType.AZAN else AlertType.SILENT
+        val updated = _settings.value.prayerAlertTypes.toMutableMap()
+        val mainPrayers = listOf(
+            PrayerType.SUBUH,
+            PrayerType.DZUHUR,
+            PrayerType.ASAR,
+            PrayerType.MAGHRIB,
+            PrayerType.ISYA
+        )
+        mainPrayers.forEach { prayer ->
+            updated[prayer] = targetAlert
+        }
+        _settings.value = _settings.value.copy(prayerAlertTypes = updated)
+        preferences.saveSettings(_settings.value)
+        scheduleBackgroundAlarms()
+        triggerHaptic(50L)
+        val msg = if (enabled) {
+            "Suara azan diaktifkan untuk semua waktu salat"
+        } else {
+            "Semua suara azan disenyapkan (mode senyap)"
+        }
+        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+    }
+
     fun setAzanVolume(volumePercent: Int) {
         _settings.value = _settings.value.copy(azanVolumePercent = volumePercent)
         preferences.saveSettings(_settings.value)

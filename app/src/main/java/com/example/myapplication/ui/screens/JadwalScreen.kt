@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
@@ -230,10 +231,13 @@ fun JadwalScreen(
 
         // Hero Card: Next Prayer Countdown
         item {
+            val azanActiveCount = settings.prayerAlertTypes.values.count { it == AlertType.AZAN }
+            val isGlobalAzanActive = azanActiveCount > 0
             NextPrayerHeroCard(
                 nextPrayer = nextPrayer,
-                azanEnabled = settings.autoSilentMode,
-                onToggleAzan = { viewModel.toggleAutoSilent(!settings.autoSilentMode) }
+                isGlobalAzanActive = isGlobalAzanActive,
+                azanActiveCount = azanActiveCount,
+                onToggleGlobalAzan = { viewModel.toggleGlobalAzanSound(it) }
             )
         }
 
@@ -521,8 +525,9 @@ private fun LocationContextBar(
 @Composable
 private fun NextPrayerHeroCard(
     nextPrayer: NextPrayerInfo,
-    azanEnabled: Boolean,
-    onToggleAzan: () -> Unit
+    isGlobalAzanActive: Boolean,
+    azanActiveCount: Int,
+    onToggleGlobalAzan: (Boolean) -> Unit
 ) {
     val hours = nextPrayer.remainingSeconds / 3600
     val minutes = (nextPrayer.remainingSeconds % 3600) / 60
@@ -661,7 +666,7 @@ private fun NextPrayerHeroCard(
                 }
             }
 
-            // Notification Azan Toggle Row
+            // Master Quick Audio Toggle Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -669,25 +674,45 @@ private fun NextPrayerHeroCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.VolumeUp,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Text(
-                        text = "Pengingat Azan Penuh",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White,
-                        fontWeight = FontWeight.Medium
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .background(if (isGlobalAzanActive) GoldAccent.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.12f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isGlobalAzanActive) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
+                            contentDescription = null,
+                            tint = if (isGlobalAzanActive) GoldAccent else Color.White.copy(alpha = 0.65f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = "Suara Azan",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = when {
+                                azanActiveCount == 5 -> "Aktif untuk semua waktu salat"
+                                azanActiveCount > 0 -> "Aktif ($azanActiveCount dari 5 salat)"
+                                else -> "Mode senyap (semua salat hening)"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.8f)
+                        )
+                    }
                 }
 
                 Switch(
-                    checked = azanEnabled,
-                    onCheckedChange = { onToggleAzan() },
+                    checked = isGlobalAzanActive,
+                    onCheckedChange = { onToggleGlobalAzan(it) },
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = EmeraldPrimary,
                         checkedTrackColor = GoldAccent,
