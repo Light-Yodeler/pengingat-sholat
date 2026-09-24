@@ -18,6 +18,9 @@ import androidx.core.app.NotificationCompat
 import com.example.myapplication.MainActivity
 import com.example.myapplication.R
 import com.example.myapplication.core.model.AlertType
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 class AzanBroadcastReceiver : BroadcastReceiver() {
 
@@ -32,11 +35,18 @@ class AzanBroadcastReceiver : BroadcastReceiver() {
         private const val CHANNEL_ID = "noor_waktu_azan_channel_v1"
         private const val NOTIFICATION_ID = 1001
 
+        private val _isAzanPlaying = MutableStateFlow(false)
+        val isAzanPlaying: StateFlow<Boolean> = _isAzanPlaying.asStateFlow()
+
+        private val _currentPlayingPrayer = MutableStateFlow<String?>(null)
+        val currentPlayingPrayer: StateFlow<String?> = _currentPlayingPrayer.asStateFlow()
+
         private var activePlayer: MediaPlayer? = null
         private var wakeLock: PowerManager.WakeLock? = null
 
         private fun stopActivePlayerOnly() {
-
+            _isAzanPlaying.value = false
+            _currentPlayingPrayer.value = null
             try {
                 if (activePlayer?.isPlaying == true) {
                     activePlayer?.stop()
@@ -90,17 +100,19 @@ class AzanBroadcastReceiver : BroadcastReceiver() {
             showNotification(context, prayerName, alertType)
 
             if (alertType == AlertType.AZAN) {
-                playAzanAudio(context, finalResId)
+                playAzanAudio(context, finalResId, prayerName)
             } else if (alertType == AlertType.SILENT) {
                 triggerSilentVibration(context)
             }
         }
     }
 
-    private fun playAzanAudio(context: Context, rawResId: Int) {
+    private fun playAzanAudio(context: Context, rawResId: Int, prayerName: String) {
         stopActivePlayerOnly()
 
         try {
+            _isAzanPlaying.value = true
+            _currentPlayingPrayer.value = prayerName
             val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
             wakeLock = pm?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "NoorWaktu:AzanWakeLock")?.apply {
                 acquire(4 * 60 * 1000L) // 4 minutes max for Azan duration
@@ -127,6 +139,8 @@ class AzanBroadcastReceiver : BroadcastReceiver() {
         } catch (e: Exception) {
             android.util.Log.e("NoorWaktuAzan", "Failed to play azan audio", e)
             activePlayer = null
+            _isAzanPlaying.value = false
+            _currentPlayingPrayer.value = null
         }
     }
 
@@ -184,6 +198,16 @@ class AzanBroadcastReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val deleteIntent = Intent(context, AzanBroadcastReceiver::class.java).apply {
+            action = ACTION_STOP_AZAN
+        }
+        val deletePendingIntent = PendingIntent.getBroadcast(
+            context,
+            2,
+            deleteIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val title = "Waktu Salat $prayerName Telah Tiba"
         val message = if (alertType == AlertType.AZAN) {
             "Hayya 'alas-shalah, mari tunaikan ibadah salat tepat waktu."
@@ -198,13 +222,14 @@ class AzanBroadcastReceiver : BroadcastReceiver() {
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setAutoCancel(true)
+            .setAutoCancel(false)
             .setContentIntent(openPendingIntent)
+            .setDeleteIntent(deletePendingIntent)
             .setOngoing(alertType == AlertType.AZAN)
 
         if (alertType == AlertType.AZAN) {
             builder.addAction(
-                android.R.drawable.ic_media_pause,
+                android.R.drawable.ic_menu_close_clear_cancel,
                 "Hentikan Azan",
                 stopPendingIntent
             )

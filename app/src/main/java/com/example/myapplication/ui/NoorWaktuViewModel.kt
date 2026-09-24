@@ -335,6 +335,15 @@ class NoorWaktuViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    val isAzanPlaying: StateFlow<Boolean> = com.example.myapplication.core.alarm.AzanBroadcastReceiver.isAzanPlaying
+    val currentPlayingPrayer: StateFlow<String?> = com.example.myapplication.core.alarm.AzanBroadcastReceiver.currentPlayingPrayer
+
+    fun stopActiveAzan() {
+        com.example.myapplication.core.alarm.AzanBroadcastReceiver.stopActiveAzan(context)
+        triggerHaptic(50L)
+        Toast.makeText(context, "Suara azan dihentikan", Toast.LENGTH_SHORT).show()
+    }
+
     fun setAzanVolume(volumePercent: Int) {
         _settings.value = _settings.value.copy(azanVolumePercent = volumePercent)
         preferences.saveSettings(_settings.value)
