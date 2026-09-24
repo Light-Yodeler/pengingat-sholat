@@ -25,6 +25,7 @@ import com.example.myapplication.core.qibla.QiblaResult
 import com.example.myapplication.core.preferences.AppPreferences
 import android.widget.Toast
 import com.example.myapplication.core.sensor.CompassSensorManager
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -285,6 +286,53 @@ class NoorWaktuViewModel(application: Application) : AndroidViewModel(applicatio
             "Semua suara azan disenyapkan (mode senyap)"
         }
         Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+    }
+
+    private var testCountdownJob: Job? = null
+    private val _testCountdownSeconds = MutableStateFlow<Int?>(null)
+    val testCountdownSeconds: StateFlow<Int?> = _testCountdownSeconds.asStateFlow()
+
+    private val _testSelectedDuration = MutableStateFlow(10)
+    val testSelectedDuration: StateFlow<Int> = _testSelectedDuration.asStateFlow()
+
+    fun setTestDuration(seconds: Int) {
+        _testSelectedDuration.value = seconds
+    }
+
+    fun startTestAlarm(seconds: Int, alertType: AlertType = AlertType.AZAN) {
+        cancelTestAlarm(showToast = false)
+        val rawResId = if (_settings.value.selectedRegularMuazzinId == 2) {
+            R.raw.azan_madinah
+        } else {
+            R.raw.azan_mekah
+        }
+        AzanAlarmScheduler.scheduleTestAlarm(context, seconds, alertType, rawResId)
+        _testCountdownSeconds.value = seconds
+        testCountdownJob = viewModelScope.launch {
+            for (remaining in seconds downTo 1) {
+                _testCountdownSeconds.value = remaining
+                delay(1000L)
+            }
+            _testCountdownSeconds.value = 0
+            delay(1500L)
+            _testCountdownSeconds.value = null
+        }
+        triggerHaptic(50L)
+        Toast.makeText(
+            context,
+            "Uji coba aktif! Azan akan berbunyi dalam $seconds detik.",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    fun cancelTestAlarm(showToast: Boolean = true) {
+        testCountdownJob?.cancel()
+        testCountdownJob = null
+        _testCountdownSeconds.value = null
+        AzanAlarmScheduler.cancelTestAlarm(context)
+        if (showToast) {
+            Toast.makeText(context, "Uji coba alarm dibatalkan.", Toast.LENGTH_SHORT).show()
+        }
     }
 
     fun setAzanVolume(volumePercent: Int) {

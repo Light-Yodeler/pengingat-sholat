@@ -144,6 +144,44 @@ object AzanAlarmScheduler {
         }
     }
 
+    const val REQUEST_CODE_TEST = 9999
+
+    fun scheduleTestAlarm(
+        context: Context,
+        secondsFromNow: Int,
+        alertType: AlertType = AlertType.AZAN,
+        rawResId: Int = R.raw.azan_mekah
+    ) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        val triggerMillis = System.currentTimeMillis() + (secondsFromNow * 1000L)
+        scheduleExactAlarm(
+            context = context,
+            alarmManager = alarmManager,
+            requestCode = REQUEST_CODE_TEST,
+            triggerMillis = triggerMillis,
+            prayerName = "Uji Coba Azan",
+            alertType = alertType,
+            rawResId = rawResId
+        )
+    }
+
+    fun cancelTestAlarm(context: Context) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        val intent = Intent(context, AzanBroadcastReceiver::class.java).apply {
+            action = AzanBroadcastReceiver.ACTION_PRAYER_ALARM
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            REQUEST_CODE_TEST,
+            intent,
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+        )
+        if (pendingIntent != null) {
+            alarmManager.cancel(pendingIntent)
+            pendingIntent.cancel()
+        }
+    }
+
     private fun computeNextTriggerMillis(prayerTime: LocalTime): Long {
         val now = LocalDateTime.now()
         var targetDateTime = LocalDateTime.of(LocalDate.now(), prayerTime)

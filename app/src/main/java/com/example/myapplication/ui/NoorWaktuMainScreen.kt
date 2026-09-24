@@ -18,6 +18,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myapplication.R
@@ -38,6 +41,8 @@ fun NoorWaktuMainScreen(
     val selectedTab by viewModel.selectedTab.collectAsState()
     val currentLocation by viewModel.currentLocation.collectAsState()
     val showProfileSheet by viewModel.showProfileSheet.collectAsState()
+    val testCountdownSeconds by viewModel.testCountdownSeconds.collectAsState()
+    val testSelectedDuration by viewModel.testSelectedDuration.collectAsState()
     val today = remember { LocalDate.now() }
     val hijriStr = remember(today) { HijriCalendarHelper.formatHijri(today) }
 
@@ -68,10 +73,12 @@ fun NoorWaktuMainScreen(
             containerColor = SurfacePure,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
         ) {
+            val profileScrollState = rememberScrollState()
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 8.dp)
+                    .verticalScroll(profileScrollState)
                     .navigationBarsPadding(),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
@@ -109,7 +116,7 @@ fun NoorWaktuMainScreen(
                     }
                 }
 
-                Divider(color = BorderDefault)
+                HorizontalDivider(color = BorderDefault)
 
                 // Stats Cards
                 Row(
@@ -159,6 +166,205 @@ fun NoorWaktuMainScreen(
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(text = "Koreksi Ikhtiyat", style = MaterialTheme.typography.bodyMedium, color = SlateDark)
                                 Text(text = "+2 Menit", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = EmeraldPrimary)
+                            }
+                        }
+                    }
+                }
+
+                // Tester Pengingat Azan Card
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Timer,
+                            contentDescription = null,
+                            tint = EmeraldPrimary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = "Tester Pengingat Azan",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = SlateDark
+                        )
+                    }
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (testCountdownSeconds != null) EmeraldDeep else SurfaceContainerLow
+                        ),
+                        border = if (testCountdownSeconds != null) {
+                            CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(GoldAccent))
+                        } else {
+                            CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(BorderDefault))
+                        }
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            if (testCountdownSeconds != null) {
+                                // Active Countdown State
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = "ALARM SEDANG DIUJI",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = GoldAccent,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 1.sp
+                                    )
+
+                                    Text(
+                                        text = "${testCountdownSeconds}s",
+                                        fontSize = 44.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color.White
+                                    )
+
+                                    Text(
+                                        text = "Alarm azan akan berbunyi saat hitungan habis. Anda dapat mengunci layar HP sekarang untuk menguji.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.White.copy(alpha = 0.85f),
+                                        textAlign = TextAlign.Center,
+                                        lineHeight = 16.sp
+                                    )
+
+                                    LinearProgressIndicator(
+                                        progress = {
+                                            val total = testSelectedDuration.toFloat().coerceAtLeast(1f)
+                                            ((testCountdownSeconds ?: 0).toFloat() / total).coerceIn(0f, 1f)
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(6.dp)
+                                            .clip(RoundedCornerShape(3.dp)),
+                                        color = GoldAccent,
+                                        trackColor = Color.White.copy(alpha = 0.2f)
+                                    )
+
+                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                    OutlinedButton(
+                                        onClick = { viewModel.cancelTestAlarm() },
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            contentColor = Color.White
+                                        ),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.6f)),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(text = "Batalkan Uji Coba")
+                                    }
+                                }
+                            } else {
+                                // Setup Tester State
+                                Text(
+                                    text = "Atur waktu hitung mundur untuk menyimulasikan alarm azan dan notifikasi layar kunci secara instan.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = SlateMuted,
+                                    lineHeight = 16.sp
+                                )
+
+                                // Preset Chips
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    val presets = listOf(5, 10, 30, 60)
+                                    presets.forEach { seconds ->
+                                        val isSelected = testSelectedDuration == seconds
+                                        Surface(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable { viewModel.setTestDuration(seconds) },
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = if (isSelected) EmeraldPrimary else SurfacePure,
+                                            border = androidx.compose.foundation.BorderStroke(
+                                                1.dp,
+                                                if (isSelected) EmeraldPrimary else BorderDefault
+                                            )
+                                        ) {
+                                            Box(
+                                                modifier = Modifier.padding(vertical = 8.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = "${seconds}d",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                    color = if (isSelected) Color.White else SlateDark
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Slider for fine tuning
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Waktu Mundur",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = SlateDark
+                                    )
+                                    Text(
+                                        text = "$testSelectedDuration Detik",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = EmeraldPrimary
+                                    )
+                                }
+
+                                Slider(
+                                    value = testSelectedDuration.toFloat(),
+                                    onValueChange = { viewModel.setTestDuration(it.toInt()) },
+                                    valueRange = 3f..120f,
+                                    steps = 117,
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = EmeraldPrimary,
+                                        activeTrackColor = EmeraldPrimary,
+                                        inactiveTrackColor = BorderDefault
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+
+                                Button(
+                                    onClick = { viewModel.startTestAlarm(testSelectedDuration) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.PlayArrow,
+                                        contentDescription = null,
+                                        tint = GoldAccent,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Mulai Uji Alarm ($testSelectedDuration Detik)",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
                         }
                     }
