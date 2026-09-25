@@ -19,11 +19,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
-            }
-        }
+        requestNotificationPermissionIfNeeded()
         enableEdgeToEdge()
         setContent {
             NoorWaktuTheme {
@@ -31,15 +27,36 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = SurfaceParchment
                 ) {
-                    NoorWaktuMainScreen(viewModel = viewModel)
+                    NoorWaktuMainScreen(
+                        viewModel = viewModel,
+                        onRequestNotificationPermission = { requestNotificationPermissionIfNeeded() }
+                    )
                 }
             }
         }
     }
 
+    private fun requestNotificationPermissionIfNeeded() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
+            }
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        viewModel.refreshPermissionStatus()
+    }
+
     override fun onResume() {
         super.onResume()
         viewModel.checkAndFetchInitialGps()
+        viewModel.refreshPermissionStatus()
     }
 
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {

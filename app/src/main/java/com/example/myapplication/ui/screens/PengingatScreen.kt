@@ -43,6 +43,74 @@ fun PengingatScreen(
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // Status Keandalan Notifikasi & Izin HP Card
+        item {
+            val isNotificationGranted by viewModel.isNotificationGranted.collectAsState()
+            val isExactAlarmGranted by viewModel.isExactAlarmGranted.collectAsState()
+            val isBatteryIgnored by viewModel.isBatteryOptimizedIgnored.collectAsState()
+            val isReady = isNotificationGranted && isExactAlarmGranted && isBatteryIgnored
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { viewModel.toggleReliabilityDialog(true) },
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isReady) EmeraldTint else GoldContainer.copy(alpha = 0.65f)
+                ),
+                border = CardDefaults.outlinedCardBorder().copy(
+                    brush = androidx.compose.ui.graphics.SolidColor(
+                        if (isReady) EmeraldPrimary.copy(alpha = 0.25f) else GoldAccent
+                    )
+                )
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(if (isReady) EmeraldPrimary else OnGoldContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isReady) Icons.Default.Verified else Icons.Default.WarningAmber,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Keandalan Azan & Izin Sistem HP",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isReady) EmeraldPrimary else OnGoldContainer
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = if (isReady) {
+                                "Semua izin aktif. Azan akan berkumandang tepat waktu saat layar mati atau HP direstart."
+                            } else {
+                                "Perlu izin agar azan tetap bunyi saat HP restart / layar mati. Ketuk untuk mengatur."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isReady) EmeraldDeep else SlateDark,
+                            lineHeight = 16.sp
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = "Buka",
+                        tint = if (isReady) EmeraldPrimary else OnGoldContainer
+                    )
+                }
+            }
+        }
+
         // Main Presets Hero Card
         item {
             Card(

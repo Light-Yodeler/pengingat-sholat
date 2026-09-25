@@ -36,7 +36,8 @@ import java.time.LocalDate
 @Composable
 fun NoorWaktuMainScreen(
     viewModel: NoorWaktuViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onRequestNotificationPermission: () -> Unit = {}
 ) {
     val selectedTab by viewModel.selectedTab.collectAsState()
     val currentLocation by viewModel.currentLocation.collectAsState()
@@ -47,8 +48,22 @@ fun NoorWaktuMainScreen(
     val hijriStr = remember(today) { HijriCalendarHelper.formatHijri(today) }
 
     val showLocationPicker by viewModel.showLocationPicker.collectAsState()
+    val showReliabilityDialog by viewModel.showReliabilityDialog.collectAsState()
+    val isNotificationGranted by viewModel.isNotificationGranted.collectAsState()
+    val isExactAlarmGranted by viewModel.isExactAlarmGranted.collectAsState()
+    val isBatteryIgnored by viewModel.isBatteryOptimizedIgnored.collectAsState()
+    val isReliabilityPerfect = isNotificationGranted && isExactAlarmGranted && isBatteryIgnored
 
     val tabTitles = listOf("Jadwal", "Kiblat", "Pengingat", "Dzikir")
+
+    // Reliability & Permission Dialog
+    if (showReliabilityDialog) {
+        com.example.myapplication.ui.screens.PrayerReliabilityDialog(
+            viewModel = viewModel,
+            onRequestNotificationPermission = onRequestNotificationPermission,
+            onDismiss = { viewModel.toggleReliabilityDialog(false) }
+        )
+    }
 
     // Location Picker Dialog (accessible from any screen via TopAppBar chip)
     if (showLocationPicker) {
@@ -168,6 +183,62 @@ fun NoorWaktuMainScreen(
                                 Text(text = "+2 Menit", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = EmeraldPrimary)
                             }
                         }
+                    }
+                }
+
+                // Keandalan Notifikasi & Azan Card
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            viewModel.toggleProfileSheet(false)
+                            viewModel.toggleReliabilityDialog(true)
+                        },
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceContainerLow),
+                    border = CardDefaults.outlinedCardBorder().copy(
+                        brush = androidx.compose.ui.graphics.SolidColor(
+                            if (isReliabilityPerfect) EmeraldPrimary.copy(alpha = 0.3f) else GoldAccent
+                        )
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(if (isReliabilityPerfect) EmeraldTint else GoldContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (isReliabilityPerfect) Icons.Default.Verified else Icons.Default.Security,
+                                contentDescription = null,
+                                tint = if (isReliabilityPerfect) EmeraldPrimary else OnGoldContainer,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Keandalan Azan & Izin HP",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = SlateDark
+                            )
+                            Text(
+                                text = if (isReliabilityPerfect) "Semua izin aktif & optimal" else "Perlu izin agar azan bunyi saat restart",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (isReliabilityPerfect) EmeraldPrimary else OnGoldContainer
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Default.ChevronRight,
+                            contentDescription = null,
+                            tint = SlateMuted
+                        )
                     }
                 }
 
@@ -478,6 +549,29 @@ fun NoorWaktuMainScreen(
                                 modifier = Modifier.widthIn(max = 110.dp),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
+                    // Reliability Shield Icon Button
+                    IconButton(
+                        onClick = { viewModel.toggleReliabilityDialog(true) },
+                        modifier = Modifier
+                            .padding(end = 4.dp)
+                            .size(36.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(if (isReliabilityPerfect) EmeraldTint else GoldContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (isReliabilityPerfect) Icons.Outlined.CheckCircle else Icons.Outlined.WarningAmber,
+                                contentDescription = "Keandalan Notifikasi & Azan",
+                                tint = if (isReliabilityPerfect) EmeraldPrimary else OnGoldContainer,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }

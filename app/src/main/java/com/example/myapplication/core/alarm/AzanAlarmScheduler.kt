@@ -9,7 +9,6 @@ import com.example.myapplication.MainActivity
 import com.example.myapplication.R
 import com.example.myapplication.core.model.AlertType
 import com.example.myapplication.core.model.AppSettings
-import com.example.myapplication.core.model.MuazzinList
 import com.example.myapplication.core.prayer.PrayerSchedule
 import com.example.myapplication.core.prayer.PrayerType
 import java.time.LocalDate
@@ -20,6 +19,14 @@ import java.time.ZoneId
 object AzanAlarmScheduler {
 
     private const val REQUEST_CODE_BASE = 2000
+
+    fun canScheduleExactAlarms(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return false
+            return alarmManager.canScheduleExactAlarms()
+        }
+        return true
+    }
 
     fun scheduleAllPrayers(
         context: Context,
@@ -62,7 +69,7 @@ object AzanAlarmScheduler {
             }
 
             val triggerMillis = computeNextTriggerMillis(prayerTime)
-            scheduleExactAlarm(
+            scheduleAlarmWithFallbacks(
                 context = context,
                 alarmManager = alarmManager,
                 requestCode = REQUEST_CODE_BASE + index,
@@ -74,7 +81,7 @@ object AzanAlarmScheduler {
         }
     }
 
-    private fun scheduleExactAlarm(
+    private fun scheduleAlarmWithFallbacks(
         context: Context,
         alarmManager: AlarmManager,
         requestCode: Int,
@@ -88,6 +95,7 @@ object AzanAlarmScheduler {
             putExtra(AzanBroadcastReceiver.EXTRA_PRAYER_NAME, prayerName)
             putExtra(AzanBroadcastReceiver.EXTRA_ALERT_TYPE, alertType.name)
             putExtra(AzanBroadcastReceiver.EXTRA_RAW_RES_ID, rawResId)
+            addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
         }
 
         val pendingIntent = PendingIntent.getBroadcast(
@@ -105,18 +113,42 @@ object AzanAlarmScheduler {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        // Tier 1: setAlarmClock (most accurate, wakes device from doze with clock icon)
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 val alarmClockInfo = AlarmManager.AlarmClockInfo(triggerMillis, showPendingIntent)
                 alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
+                return
             } else {
                 alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerMillis, pendingIntent)
+                return
             }
-        } catch (_: Exception) {
-            try {
+        } catch (e: Exception) {
+            android.util.Log.w("AzanAlarmScheduler", "setAlarmClock failed, trying setExactAndAllowWhileIdle: ${e.message}")
+        }
+
+        // Tier 2: setExactAndAllowWhileIdle
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMillis, pendingIntent)
-            } catch (_: Exception) {
+                return
+            } else {
+                alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerMillis, pendingIntent)
+                return
             }
+        } catch (e: Exception) {
+            android.util.Log.w("AzanAlarmScheduler", "setExactAndAllowWhileIdle failed, trying setAndAllowWhileIdle: ${e.message}")
+        }
+
+        // Tier 3: Inexact fallback (never throws SecurityException, ensures prayer notification will still fire)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMillis, pendingIntent)
+            } else {
+                alarmManager.set(AlarmManager.RTC_WAKEUP, triggerMillis, pendingIntent)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("AzanAlarmScheduler", "Fatal: failed to set any alarm for $prayerName", e)
         }
     }
 
@@ -154,7 +186,7 @@ object AzanAlarmScheduler {
     ) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
         val triggerMillis = System.currentTimeMillis() + (secondsFromNow * 1000L)
-        scheduleExactAlarm(
+        scheduleAlarmWithFallbacks(
             context = context,
             alarmManager = alarmManager,
             requestCode = REQUEST_CODE_TEST,

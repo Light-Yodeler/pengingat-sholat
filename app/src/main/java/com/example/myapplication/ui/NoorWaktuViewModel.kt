@@ -123,6 +123,25 @@ class NoorWaktuViewModel(application: Application) : AndroidViewModel(applicatio
 
     private var hasVibratedForCurrentAlignment = false
 
+    // Permissions & Reliability State
+    private val _isNotificationGranted = MutableStateFlow(
+        com.example.myapplication.core.permission.AppPermissionManager.isNotificationPermissionGranted(context)
+    )
+    val isNotificationGranted: StateFlow<Boolean> = _isNotificationGranted.asStateFlow()
+
+    private val _isExactAlarmGranted = MutableStateFlow(
+        com.example.myapplication.core.permission.AppPermissionManager.isExactAlarmPermissionGranted(context)
+    )
+    val isExactAlarmGranted: StateFlow<Boolean> = _isExactAlarmGranted.asStateFlow()
+
+    private val _isBatteryOptimizedIgnored = MutableStateFlow(
+        com.example.myapplication.core.permission.AppPermissionManager.isBatteryOptimizationIgnored(context)
+    )
+    val isBatteryOptimizedIgnored: StateFlow<Boolean> = _isBatteryOptimizedIgnored.asStateFlow()
+
+    private val _showReliabilityDialog = MutableStateFlow(false)
+    val showReliabilityDialog: StateFlow<Boolean> = _showReliabilityDialog.asStateFlow()
+
     init {
         val items = DhikrPresets.getItemsForCategory(_dhikrCategory.value)
         val firstItem = items.firstOrNull()
@@ -133,6 +152,27 @@ class NoorWaktuViewModel(application: Application) : AndroidViewModel(applicatio
         observeCompass()
         checkAndFetchInitialGps()
         scheduleBackgroundAlarms()
+        refreshPermissionStatus()
+        // Automatically prompt reliability dialog if critical permissions are missing
+        if (!_isNotificationGranted.value || !_isExactAlarmGranted.value || !_isBatteryOptimizedIgnored.value) {
+            _showReliabilityDialog.value = true
+        }
+    }
+
+    fun refreshPermissionStatus() {
+        val notif = com.example.myapplication.core.permission.AppPermissionManager.isNotificationPermissionGranted(context)
+        val alarm = com.example.myapplication.core.permission.AppPermissionManager.isExactAlarmPermissionGranted(context)
+        val battery = com.example.myapplication.core.permission.AppPermissionManager.isBatteryOptimizationIgnored(context)
+        _isNotificationGranted.value = notif
+        _isExactAlarmGranted.value = alarm
+        _isBatteryOptimizedIgnored.value = battery
+    }
+
+    fun toggleReliabilityDialog(show: Boolean) {
+        _showReliabilityDialog.value = show
+        if (show) {
+            refreshPermissionStatus()
+        }
     }
 
 

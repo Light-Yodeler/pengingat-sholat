@@ -1,27 +1,16 @@
 package com.example.myapplication.core.alarm
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
-import android.media.AudioAttributes
-import android.media.MediaPlayer
 import android.os.Build
-import android.os.PowerManager
-import android.os.VibrationAttributes
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
-import androidx.core.app.NotificationCompat
-import com.example.myapplication.MainActivity
+import androidx.core.content.ContextCompat
 import com.example.myapplication.R
 import com.example.myapplication.core.model.AlertType
-import kotlinx.coroutines.flow.MutableStateFlow
+import com.example.myapplication.core.prayer.PrayerTimeCalculator
+import com.example.myapplication.core.preferences.AppPreferences
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import java.time.LocalDate
 
 class AzanBroadcastReceiver : BroadcastReceiver() {
 
@@ -33,86 +22,16 @@ class AzanBroadcastReceiver : BroadcastReceiver() {
         const val EXTRA_ALERT_TYPE = "EXTRA_ALERT_TYPE"
         const val EXTRA_RAW_RES_ID = "EXTRA_RAW_RES_ID"
 
-        private const val CHANNEL_ID = "noor_waktu_azan_channel_v1"
-        private const val NOTIFICATION_ID = 1001
+        val isAzanPlaying: StateFlow<Boolean>
+            get() = AzanPlaybackService.isAzanPlaying
 
-        private val _isAzanPlaying = MutableStateFlow(false)
-        val isAzanPlaying: StateFlow<Boolean> = _isAzanPlaying.asStateFlow()
-
-        private val _currentPlayingPrayer = MutableStateFlow<String?>(null)
-        val currentPlayingPrayer: StateFlow<String?> = _currentPlayingPrayer.asStateFlow()
-
-        private var activePlayer: MediaPlayer? = null
-        private var wakeLock: PowerManager.WakeLock? = null
-        private var playStartTime: Long = 0L
-        private var volumeReceiver: BroadcastReceiver? = null
-
-        private fun registerVolumeKeyObserver(context: Context) {
-            unregisterVolumeKeyObserver(context)
-            try {
-                val receiver = object : BroadcastReceiver() {
-                    override fun onReceive(c: Context, intent: Intent) {
-                        if (intent.action == "android.media.VOLUME_CHANGED_ACTION") {
-                            if (System.currentTimeMillis() - playStartTime > 600L) {
-                                android.util.Log.i("NoorWaktuAzan", "Volume key pressed while screen locked/background, stopping azan!")
-                                stopActiveAzan(c)
-                            }
-                        }
-                    }
-                }
-                volumeReceiver = receiver
-                val filter = IntentFilter("android.media.VOLUME_CHANGED_ACTION")
-                val appContext = context.applicationContext
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    appContext.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
-                } else {
-                    appContext.registerReceiver(receiver, filter)
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("NoorWaktuAzan", "Failed to register volume key observer", e)
-            }
-        }
-
-        private fun unregisterVolumeKeyObserver(context: Context?) {
-            try {
-                volumeReceiver?.let {
-                    context?.applicationContext?.unregisterReceiver(it)
-                }
-            } catch (_: Exception) {
-            } finally {
-                volumeReceiver = null
-            }
-        }
-
-        private fun stopActivePlayerOnly(context: Context? = null) {
-            _isAzanPlaying.value = false
-            _currentPlayingPrayer.value = null
-            unregisterVolumeKeyObserver(context)
-            try {
-                if (activePlayer?.isPlaying == true) {
-                    activePlayer?.stop()
-                }
-                activePlayer?.release()
-            } catch (_: Exception) {
-            } finally {
-                activePlayer = null
-                try {
-                    if (wakeLock?.isHeld == true) {
-                        wakeLock?.release()
-                    }
-                } catch (_: Exception) {
-                }
-                wakeLock = null
-            }
-        }
+        val currentPlayingPrayer: StateFlow<String?>
+            get() = AzanPlaybackService.currentPlayingPrayer
 
         fun stopActiveAzan(context: Context) {
-            stopActivePlayerOnly(context)
-            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-            nm?.cancel(NOTIFICATION_ID)
+            AzanPlaybackService.stopAzan(context)
         }
     }
-
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == ACTION_STOP_AZAN) {
@@ -123,7 +42,11 @@ class AzanBroadcastReceiver : BroadcastReceiver() {
         if (intent.action == ACTION_PRAYER_ALARM) {
             val prayerName = intent.getStringExtra(EXTRA_PRAYER_NAME) ?: "Salat"
             val alertTypeStr = intent.getStringExtra(EXTRA_ALERT_TYPE) ?: AlertType.AZAN.name
-            val defaultRes = if (prayerName.contains("Subuh", ignoreCase = true)) R.raw.azan_fajr_nafea else R.raw.azan_mekah
+            val defaultRes = if (prayerName.contains("Subuh", ignoreCase = true)) {
+                R.raw.azan_fajr_nafea
+            } else {
+                R.raw.azan_mekah
+            }
             val rawResId = intent.getIntExtra(EXTRA_RAW_RES_ID, defaultRes)
             val finalResId = if (rawResId == 0) defaultRes else rawResId
 
@@ -133,171 +56,44 @@ class AzanBroadcastReceiver : BroadcastReceiver() {
                 AlertType.AZAN
             }
 
-            android.util.Log.i("NoorWaktuAzan", "onReceive: prayer=$prayerName, alertType=$alertType, resId=$finalResId")
+            android.util.Log.i("AzanBroadcastReceiver", "onReceive: prayer=$prayerName, alertType=$alertType, resId=$finalResId")
 
-            if (alertType == AlertType.OFF) return
+            if (alertType != AlertType.OFF) {
+                val serviceIntent = Intent(context, AzanPlaybackService::class.java).apply {
+                    action = AzanPlaybackService.ACTION_PLAY_AZAN
+                    putExtra(AzanPlaybackService.EXTRA_PRAYER_NAME, prayerName)
+                    putExtra(AzanPlaybackService.EXTRA_ALERT_TYPE, alertType.name)
+                    putExtra(AzanPlaybackService.EXTRA_RAW_RES_ID, finalResId)
+                }
 
-            createNotificationChannel(context)
-            showNotification(context, prayerName, alertType)
-
-            if (alertType == AlertType.AZAN) {
-                playAzanAudio(context, finalResId, prayerName)
-            } else if (alertType == AlertType.SILENT) {
-                triggerSilentVibration(context)
-            }
-        }
-    }
-
-    private fun playAzanAudio(context: Context, rawResId: Int, prayerName: String) {
-        stopActivePlayerOnly(context)
-
-        try {
-            playStartTime = System.currentTimeMillis()
-            registerVolumeKeyObserver(context)
-            _isAzanPlaying.value = true
-            _currentPlayingPrayer.value = prayerName
-            val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
-            wakeLock = pm?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "NoorWaktu:AzanWakeLock")?.apply {
-                acquire(4 * 60 * 1000L) // 4 minutes max for Azan duration
-            }
-
-            val player = MediaPlayer().apply {
-                val attrs = AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ALARM)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .build()
-                setAudioAttributes(attrs)
-                val afd = context.resources.openRawResourceFd(rawResId)
-                setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
-                afd.close()
-                prepare()
-            }
-            player.isLooping = false
-            player.setOnCompletionListener {
-                stopActiveAzan(context)
-            }
-            player.start()
-            activePlayer = player
-            android.util.Log.i("NoorWaktuAzan", "MediaPlayer started playing successfully")
-        } catch (e: Exception) {
-            android.util.Log.e("NoorWaktuAzan", "Failed to play azan audio", e)
-            activePlayer = null
-            _isAzanPlaying.value = false
-            _currentPlayingPrayer.value = null
-            unregisterVolumeKeyObserver(context)
-        }
-    }
-
-
-
-    private fun triggerSilentVibration(context: Context) {
-        try {
-            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
-                vm?.defaultVibrator
-            } else {
-                @Suppress("DEPRECATION")
-                context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-            }
-
-            if (vibrator != null && vibrator.hasVibrator()) {
-                val pattern = longArrayOf(0, 500, 300, 500, 300, 500)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    val effect = VibrationEffect.createWaveform(pattern, -1)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        val attrs = VibrationAttributes.Builder()
-                            .setUsage(VibrationAttributes.USAGE_ALARM)
-                            .build()
-                        vibrator.vibrate(effect, attrs)
-                    } else {
-                        vibrator.vibrate(effect)
-                    }
-                } else {
-                    @Suppress("DEPRECATION")
-                    vibrator.vibrate(pattern, -1)
+                try {
+                    ContextCompat.startForegroundService(context, serviceIntent)
+                } catch (e: Exception) {
+                    android.util.Log.e("AzanBroadcastReceiver", "Failed to start AzanPlaybackService", e)
                 }
             }
-        } catch (_: Exception) {
+
+            // Always reschedule all prayers so tomorrow's alarms and upcoming prayers are continuously set
+            autoRescheduleUpcomingPrayers(context)
         }
     }
 
-    private fun showNotification(context: Context, prayerName: String, alertType: AlertType) {
-        val openAppIntent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val openPendingIntent = PendingIntent.getActivity(
-            context,
-            0,
-            openAppIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val stopIntent = Intent(context, AzanBroadcastReceiver::class.java).apply {
-            action = ACTION_STOP_AZAN
-        }
-        val stopPendingIntent = PendingIntent.getBroadcast(
-            context,
-            1,
-            stopIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val deleteIntent = Intent(context, AzanBroadcastReceiver::class.java).apply {
-            action = ACTION_STOP_AZAN
-        }
-        val deletePendingIntent = PendingIntent.getBroadcast(
-            context,
-            2,
-            deleteIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val title = "Waktu Salat $prayerName Telah Tiba"
-        val message = if (alertType == AlertType.AZAN) {
-            "Hayya 'alas-shalah, mari tunaikan ibadah salat tepat waktu."
-        } else {
-            "Pengingat waktu $prayerName (Mode Senyap)."
-        }
-
-        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setContentTitle(title)
-            .setContentText(message)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setAutoCancel(false)
-            .setContentIntent(openPendingIntent)
-            .setDeleteIntent(deletePendingIntent)
-            .setOngoing(alertType == AlertType.AZAN)
-
-        if (alertType == AlertType.AZAN) {
-            builder.addAction(
-                android.R.drawable.ic_menu_close_clear_cancel,
-                "Hentikan Azan",
-                stopPendingIntent
+    private fun autoRescheduleUpcomingPrayers(context: Context) {
+        try {
+            val prefs = AppPreferences(context)
+            val savedCity = prefs.loadLocation()
+            val savedSettings = prefs.loadSettings()
+            val schedule = PrayerTimeCalculator.calculate(
+                date = LocalDate.now(),
+                latitude = savedCity.latitude,
+                longitude = savedCity.longitude,
+                altitudeMeters = savedCity.altitudeMeters,
+                timeZoneHours = savedCity.timeZoneOffsetHours
             )
-        }
-
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-        nm?.notify(NOTIFICATION_ID, builder.build())
-        android.util.Log.i("NoorWaktuAzan", "Notification successfully posted for $prayerName")
-    }
-
-
-    private fun createNotificationChannel(context: Context) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Pengingat Waktu Azan & Salat",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Notifikasi suara azan dan waktu salat otomatis"
-                enableVibration(true)
-                setSound(null, null)
-            }
-            nm.createNotificationChannel(channel)
+            AzanAlarmScheduler.scheduleAllPrayers(context, schedule, savedSettings)
+            android.util.Log.i("AzanBroadcastReceiver", "Auto-rescheduled all prayer alarms successfully")
+        } catch (e: Exception) {
+            android.util.Log.e("AzanBroadcastReceiver", "Failed to auto-reschedule prayers", e)
         }
     }
 }
